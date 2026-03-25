@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Initialize the API with your key.
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "AIzaSyCLsg2ahWNDarmKkVTVRWP7qeAEvxEYksg";
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "XXX-X";
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 export const getGeminiModel = () => {
@@ -378,6 +378,7 @@ A) [Seçenek — kısa, net]
 B) [Seçenek — benzer uzunlukta]
 C) [Seçenek — benzer uzunlukta]
 D) [Seçenek — benzer uzunlukta]
+E) [Seçenek — benzer uzunlukta]
 
 ---
 
@@ -390,6 +391,7 @@ D) [Seçenek — benzer uzunlukta]
 • **B)** [Kavram yanılgısı — 1 cümle]
 • **C)** [Kavram yanılgısı — 1 cümle]
 • **D)** [Kavram yanılgısı — 1 cümle]
+• **E)** [Kavram yanılgısı — 1 cümle]
 
 ### 🛡️ Kontrol
 • Bağlamsız çözülebilir mi? ➜ Hayır
@@ -457,6 +459,86 @@ Aşağıda bir öğretmen tarafından yazılmış bir soru (bağlam metni, soru 
 `;
 
     return await callGemini(prompt);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 3b. SORU DENETLEYİCİ — MULTİMODAL (Görsel + Metin Destekli)
+// ═══════════════════════════════════════════════════════════════════
+
+export async function auditQuestionMultimodal(questionData: string, files: UploadedFile[]): Promise<string> {
+    const hasText = questionData.trim().length > 0;
+    const hasFiles = files.length > 0;
+
+    if (!hasText && !hasFiles) {
+        throw new Error('Lütfen denetlenecek soruyu metin olarak girin veya görsel olarak yükleyin.');
+    }
+
+    // Sadece metin varsa, normal auditQuestion'a yönlendir
+    if (!hasFiles) {
+        return await auditQuestion(questionData);
+    }
+
+    const prompt = `
+${TYMM_RULES_CONTEXT}
+
+════ GÖREV: TYMM SORU DENETİMİ (GÖRSEL + METİN ANALİZİ) ════
+
+${hasFiles ? `Sana bir veya birden fazla SORU GÖRSELİ yüklendi. Bu görsellerdeki soruyu DİKKATLİCE oku ve metne dönüştür.` : ''}
+${hasText ? `Ayrıca aşağıda metin olarak da soru verilmiştir:
+"${questionData}"` : ''}
+
+📋 YAPMAN GEREKENLER:
+1. ${hasFiles ? 'Yüklenen görseldeki soruyu oku ve tam olarak metne dönüştür' : 'Verilen metin soruyu analiz et'}
+2. Soruyu TYMM Soru Yazım Kılavuzu'ndaki kontrol listesine göre MADDE MADDE denetle
+
+📝 ÜRETİLECEK DENETİM RAPORU (Markdown formatında):
+
+${hasFiles ? `## 📷 Görselden Okunan Soru
+[Görseldeki soru metnini buraya yaz — bağlam, soru kökü, şıklar dahil]
+
+---
+` : ''}
+
+## 📋 TYMM Soru Denetim Raporu
+
+### 1. Bağlam Seçimi
+| Kontrol Ölçütü | Sonuç | Açıklama |
+|---|---|---|
+| Bağlam öğrencinin yaş ve sınıf düzeyine uygun mu? | ✅/❌ | [Kısa açıklama] |
+| Bağlam gerçek yaşamla ilişkili mi? | ✅/❌ | [Kısa açıklama] |
+| Bağlam gereksiz ve karmaşık detaylardan arındırılmış mı? | ✅/❌ | |
+| Bağlam gereksiz okuma yükünden arındırılmış mı? | ✅/❌ | |
+| Bağlam ilgili beceriyi harekete geçirecek nitelikte mi? | ✅/❌ | |
+| Bağlam kültür, cinsiyet, bölge, din açısından tarafsız mı? | ✅/❌ | |
+
+### 2. Soru ve Seçenekler
+| Kontrol Ölçütü | Sonuç | Açıklama |
+|---|---|---|
+| Soru açık ve anlaşılır bir dille yazılmış mı? | ✅/❌ | |
+| Güçlük düzeyi hedeflenen gruba uygun mu? | ✅/❌ | |
+| Soru kökü/seçenekler süreç bileşenini ölçecek şekilde mi? | ✅/❌ | |
+| Soru, bağlamdaki bilgiyle cevaplanabilir mi (ön bilgiden bağımsız)? | ✅/❌ | |
+| Seçenekler uzunluk ve biçim bakımından birbirine benzer mi? | ✅/❌ | |
+| Çeldiriciler yeterince güçlü mü? | ✅/❌ | |
+| İpucu veren ifadelerden kaçınılmış mı? | ✅/❌ | |
+| "Hepsi/Hiçbiri" gibi seçenekler var mı? | ✅/❌ | |
+
+### 3. Dil ve Anlatım
+| Kontrol Ölçütü | Sonuç | Açıklama |
+|---|---|---|
+| Dil bilgisi kurallarına uyulmuş mu? | ✅/❌ | |
+| Anlatım bozukluğu var mı? | ✅/❌ | |
+
+### 4. Genel Puan: [X/10]
+
+### 5. Sık Yapılan Hatalar Kontrolü
+[Kılavuzdaki "Sık Yapılan Hatalar" tablolarına göre tespit edilen hatalar:]
+
+### 6. 🔧 İyileştirme Önerileri
+[TYMM'ye tam uyumlu hale getirmek için yapılması gereken düzeltmeler, madde madde ve somut:]
+`;
+
+    return await callGeminiMultimodal(prompt, files);
 }
 
 // ═══════════════════════════════════════════════════════════════════
